@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import jsPDF from "jspdf";
+import dynamic from "next/dynamic";
+
+const PdfExportButton = dynamic(
+  () => import("../components/PdfExportButton"),
+  { ssr: false }
+);
 
 /**
  * 诊断结果类型
@@ -82,74 +87,29 @@ function getFriendlyErrorMessage(message: string) {
   }
   return "系统开小差了，请稍后再试。";
 }
-function arrayBufferToBinaryString(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 0x8000;
 
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return binary;
-}
-
-async function registerChineseFont(doc: jsPDF) {
-  const response = await fetch("/fonts/NotoSansSC-Regular.ttf");
-  const arrayBuffer = await response.arrayBuffer();
-  const fontBinary = arrayBufferToBinaryString(arrayBuffer);
-
-  doc.addFileToVFS("NotoSansSC-Regular.ttf", fontBinary);
-  doc.addFont("NotoSansSC-Regular.ttf", "NotoSansSC", "normal");
-  doc.setFont("NotoSansSC");
-}
 export default function HomePage() {
-  /**
-   * 输入内容
-   */
   const [jdText, setJdText] = useState("");
   const [resumeText, setResumeText] = useState("");
 
-  /**
-   * 加载状态
-   */
   const [loading, setLoading] = useState(false);
   const [rewriteLoading, setRewriteLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  /**
-   * 结果状态
-   */
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
 
-  /**
-   * 改写模式
-   */
   const [rewriteMode, setRewriteMode] = useState<"conservative" | "enhanced">("conservative");
 
-  /**
-   * 右侧可编辑简历
-   */
   const [editableResume, setEditableResume] =
     useState<RewriteResult["rewrittenResume"] | null>(null);
 
-  /**
-   * 错误提示
-   */
   const [error, setError] = useState("");
   const [rewriteError, setRewriteError] = useState("");
   const [uploadError, setUploadError] = useState("");
 
-  /**
-   * 复制成功提示
-   */
   const [copied, setCopied] = useState(false);
 
-  /**
-   * 清空
-   */
   const handleResetAll = () => {
     setJdText("");
     setResumeText("");
@@ -164,7 +124,7 @@ export default function HomePage() {
   };
 
   /**
-   * 上传并解析简历文件
+   * 上传并解析 DOCX 简历
    */
   const handleResumeUpload = async (file: File) => {
     try {
@@ -289,16 +249,10 @@ export default function HomePage() {
     }
   };
 
-  /**
-   * summary 编辑
-   */
   const updateSummary = (value: string) => {
     setEditableResume((prev) => (prev ? { ...prev, summary: value } : prev));
   };
 
-  /**
-   * 实习标题编辑
-   */
   const updateExperienceTitle = (index: number, value: string) => {
     setEditableResume((prev) => {
       if (!prev) return prev;
@@ -308,9 +262,6 @@ export default function HomePage() {
     });
   };
 
-  /**
-   * 实习 bullet 编辑
-   */
   const updateExperienceBullet = (expIndex: number, bulletIndex: number, value: string) => {
     setEditableResume((prev) => {
       if (!prev) return prev;
@@ -322,9 +273,6 @@ export default function HomePage() {
     });
   };
 
-  /**
-   * 项目名称编辑
-   */
   const updateProjectName = (index: number, value: string) => {
     setEditableResume((prev) => {
       if (!prev) return prev;
@@ -334,9 +282,6 @@ export default function HomePage() {
     });
   };
 
-  /**
-   * 项目 bullet 编辑
-   */
   const updateProjectBullet = (projectIndex: number, bulletIndex: number, value: string) => {
     setEditableResume((prev) => {
       if (!prev) return prev;
@@ -348,9 +293,6 @@ export default function HomePage() {
     });
   };
 
-  /**
-   * 技能编辑
-   */
   const updateSkills = (value: string) => {
     setEditableResume((prev) =>
       prev
@@ -473,52 +415,9 @@ export default function HomePage() {
     URL.revokeObjectURL(url);
   };
 
-  /**
-   * 导出 PDF
-   */
-  const handleDownloadPdf = async () => {
-  try {
-    const text = buildResumeText();
-    if (!text) return;
-
-    const doc = new jsPDF({
-      unit: "pt",
-      format: "a4",
-    });
-
-    // 注册中文字体
-    await registerChineseFont(doc);
-    doc.setFontSize(12);
-
-    const marginLeft = 40;
-    const marginTop = 50;
-    const maxWidth = 515;
-
-    const lines = doc.splitTextToSize(text, maxWidth);
-    let y = marginTop;
-
-    lines.forEach((line: string) => {
-      if (y > 780) {
-        doc.addPage();
-        doc.setFont("NotoSansSC");
-        doc.setFontSize(12);
-        y = marginTop;
-      }
-      doc.text(line, marginLeft, y);
-      y += 22;
-    });
-
-    doc.save("resume_rewrite.pdf");
-  } catch (err) {
-    console.error(err);
-    setRewriteError("PDF 导出失败，请检查中文字体是否已放到 public/fonts 目录。");
-  }
-};
-
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10">
       <div className="mx-auto max-w-6xl">
-        {/* 顶部标题区 */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900">AI 简历重构助手</h1>
           <p className="mt-2 text-slate-600">
@@ -538,7 +437,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 输入区 */}
         <div className="grid gap-6 md:grid-cols-2">
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="mb-3 text-lg font-semibold text-slate-900">目标岗位 JD</h2>
@@ -555,10 +453,10 @@ export default function HomePage() {
 
             <div className="mb-3 flex flex-wrap items-center gap-3">
               <label className="inline-flex cursor-pointer rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">
-                {uploading ? "解析中..." : "上传  DOCX"}
+                {uploading ? "解析中..." : "上传 DOCX"}
                 <input
                   type="file"
-                  accept=".PDF/.docx"
+                  accept=".docx"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -568,14 +466,14 @@ export default function HomePage() {
               </label>
 
               <span className="text-xs text-slate-500">
-                上传后将自动提取文本并填入下方输入框
+                上传后将自动提取 DOCX 文本并填入下方输入框
               </span>
             </div>
 
             <textarea
               value={resumeText}
               onChange={(e) => setResumeText(e.target.value)}
-              placeholder="请先粘贴简历纯文本内容，v0.4 支持上传 PDF/ DOCX"
+              placeholder="请先粘贴简历纯文本内容，当前上传仅支持 DOCX"
               className="min-h-[320px] w-full rounded-xl border border-slate-200 p-4 text-sm outline-none focus:border-slate-400"
             />
 
@@ -583,7 +481,6 @@ export default function HomePage() {
           </section>
         </div>
 
-        {/* 顶部操作 */}
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <button
             onClick={handleDiagnose}
@@ -603,7 +500,6 @@ export default function HomePage() {
           {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
-        {/* 诊断结果 */}
         {result && (
           <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="mb-6">
@@ -692,7 +588,6 @@ export default function HomePage() {
               </ul>
             </div>
 
-            {/* 改写模式区 */}
             <div className="mt-8">
               <div className="mb-4 flex items-center gap-3">
                 <span className="text-sm text-slate-600">改写模式</span>
@@ -741,7 +636,6 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* 重构结果 */}
         {rewriteResult && editableResume && (
           <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="mb-6">
@@ -751,7 +645,6 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* 重构结果顶部操作 */}
             <div className="mb-6 flex flex-wrap items-center gap-4">
               <button
                 onClick={handleCopyResume}
@@ -767,18 +660,15 @@ export default function HomePage() {
                 导出为 txt
               </button>
 
-              <button
-                onClick={handleDownloadPdf}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200"
-              >
-                导出为 PDF
-              </button>
+              <PdfExportButton
+  text={buildResumeText()}
+  onError={(message: string) => setRewriteError(message)}
+/>
 
               {copied && <span className="text-sm text-emerald-600">已复制到剪贴板</span>}
             </div>
 
             <div className="grid gap-6 md:grid-cols-[320px_1fr]">
-              {/* 左侧：修改说明 */}
               <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <h3 className="mb-3 font-semibold text-slate-900">修改说明</h3>
 
@@ -806,10 +696,8 @@ export default function HomePage() {
                 )}
               </aside>
 
-              {/* 右侧：可编辑简历内容 */}
               <div className="rounded-2xl border border-slate-200 bg-white p-6">
                 <div className="space-y-8">
-                  {/* 个人总结 */}
                   <section>
                     <h3 className="mb-2 text-lg font-semibold text-slate-900">个人总结</h3>
                     <textarea
@@ -819,7 +707,6 @@ export default function HomePage() {
                     />
                   </section>
 
-                  {/* 实习经历 */}
                   <section>
                     <h3 className="mb-2 text-lg font-semibold text-slate-900">实习经历</h3>
                     <div className="space-y-5">
@@ -848,7 +735,6 @@ export default function HomePage() {
                     </div>
                   </section>
 
-                  {/* 项目经历 */}
                   <section>
                     <h3 className="mb-2 text-lg font-semibold text-slate-900">项目经历</h3>
                     <div className="space-y-5">
@@ -877,7 +763,6 @@ export default function HomePage() {
                     </div>
                   </section>
 
-                  {/* 教育背景 */}
                   <section>
                     <h3 className="mb-2 text-lg font-semibold text-slate-900">教育背景</h3>
                     <div className="space-y-4 text-sm text-slate-700">
@@ -894,7 +779,6 @@ export default function HomePage() {
                     </div>
                   </section>
 
-                  {/* 技能关键词 */}
                   <section>
                     <h3 className="mb-2 text-lg font-semibold text-slate-900">技能关键词</h3>
                     <textarea
