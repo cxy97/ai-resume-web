@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
 const PdfExportButton = dynamic(
@@ -23,6 +23,9 @@ type DiagnosisResult = {
   matchedItems: string[];
   weakItems: string[];
   suggestions: string[];
+  usage?: {
+    diagnoseRemaining?: number;
+  };
 };
 
 /**
@@ -61,12 +64,27 @@ type RewriteResult = {
     type: string;
   }[];
   warnings: string[];
+  usage?: {
+    rewriteRemaining?: number;
+  };
 };
 
 /**
  * 错误中文化
  */
 function getFriendlyErrorMessage(message: string) {
+  if (message.includes("今日诊断次数已用完")) {
+    return "今日诊断次数已用完，请明天再试。";
+  }
+  if (message.includes("今日重构次数已用完")) {
+    return "今日重构次数已用完，请明天再试。";
+  }
+  if (message.includes("今日简历解析次数已用完")) {
+    return "今日简历解析次数已用完，请明天再试。";
+  }
+  if (message.includes("DAILY_LIMIT_EXCEEDED")) {
+    return "今日调用次数已达上限，请明天再试。";
+  }
   if (message.includes("Missing ARK environment variables")) {
     return "系统环境变量未配置完整，请检查本地配置。";
   }
@@ -109,6 +127,29 @@ export default function HomePage() {
   const [uploadError, setUploadError] = useState("");
 
   const [copied, setCopied] = useState(false);
+  const [diagnoseRemaining, setDiagnoseRemaining] = useState<number | null>(null);
+  const [rewriteRemaining, setRewriteRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchUsage = async () => {
+      try {
+        const res = await fetch("/api/usage", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        setDiagnoseRemaining(data?.diagnose?.remaining ?? null);
+        setRewriteRemaining(data?.rewrite?.remaining ?? null);
+      } catch {
+        // 静默处理，不影响主流程
+      }
+    };
+
+    fetchUsage();
+  }, []);
 
   const handleResetAll = () => {
     setJdText("");
@@ -142,13 +183,15 @@ export default function HomePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "简历解析失败");
+        throw new Error(data.message || data.error || "简历解析失败");
       }
 
       setResumeText(data.text || "");
     } catch (err) {
       setUploadError(
-        err instanceof Error ? err.message : "简历上传失败，请稍后重试"
+        err instanceof Error
+          ? getFriendlyErrorMessage(err.message)
+          : "简历上传失败，请稍后重试"
       );
     } finally {
       setUploading(false);
@@ -188,10 +231,14 @@ export default function HomePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to diagnose resume");
+        throw new Error(data.message || data.error || "Failed to diagnose resume");
       }
 
       setResult(data);
+
+      if (typeof data?.usage?.diagnoseRemaining === "number") {
+        setDiagnoseRemaining(data.usage.diagnoseRemaining);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -233,11 +280,15 @@ export default function HomePage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to rewrite resume");
+        throw new Error(data.message || data.error || "Failed to rewrite resume");
       }
 
       setRewriteResult(data);
       setEditableResume(data.rewrittenResume);
+
+      if (typeof data?.usage?.rewriteRemaining === "number") {
+        setRewriteRemaining(data.usage.rewriteRemaining);
+      }
     } catch (err) {
       setRewriteError(
         err instanceof Error
@@ -423,6 +474,15 @@ export default function HomePage() {
           <p className="mt-2 text-slate-600">
             先粘贴目标岗位 JD 和简历文本，生成岗位匹配诊断结果，并进一步完成简历重构。
           </p>
+
+          <div className="mt-3 flex flex-wrap gap-3 text-sm">
+            <span className="rounded-full bg-white px-3 py-1 text-slate-700 ring-1 ring-slate-200">
+              今日剩余诊断次数：{diagnoseRemaining ?? "-"}
+            </span>
+            <span className="rounded-full bg-white px-3 py-1 text-slate-700 ring-1 ring-slate-200">
+              今日剩余重构次数：{rewriteRemaining ?? "-"}
+            </span>
+          </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-slate-900 px-3 py-1 text-xs text-white">
@@ -661,9 +721,9 @@ export default function HomePage() {
               </button>
 
               <PdfExportButton
-  text={buildResumeText()}
-  onError={(message: string) => setRewriteError(message)}
-/>
+                text={buildResumeText()}
+                onError={(message: string) => setRewriteError(message)}
+              />
 
               {copied && <span className="text-sm text-emerald-600">已复制到剪贴板</span>}
             </div>

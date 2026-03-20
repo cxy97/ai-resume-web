@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import mammoth from "mammoth";
+import {
+  enforceDailyLimit,
+  buildLimitExceededResponse,
+} from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const limitResult = await enforceDailyLimit(req, "parseResume");
+    if (!limitResult.ok) {
+      return buildLimitExceededResponse(
+        limitResult.message || "今日简历解析次数已用完，请明天再试。"
+      );
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
